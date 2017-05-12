@@ -1,0 +1,113 @@
+#!/usr/bin/perl
+use warnings;
+use strict;
+
+# This script takes in a GDS search result and for each entry it
+# will:
+#
+# 1) Identify the GSE accession number
+# 2) Use this to obtain the list of samples for this series
+# 3) Pick the first sample and get its SRX number
+# 4) Query ENA for this number to get the SRR identifier
+# 5) Construct the download URL for the first read set for this identifer
+
+
+my ($gds_file) = @ARGV;
+
+
+open (IN,$gds_file) or die "Can't read $gds_file: $!";
+
+while (<IN>) {
+		chomp;
+		next unless ($_);
+		sleep(1);
+		my ($id,$title) = split(/\. /,$_,2);
+
+		my %annotation;
+
+		while (<IN>) {
+				chomp;
+				last unless ($_);
+
+				if (/Series\s+Accession:\s+(\S+)\s+/) {
+						$annotation{series} = $1;
+				}
+
+				else {
+						my ($key,$value) = split(/:\t/);
+						$annotation{$key} = $value;
+				}
+		}
+
+		$annotation{sample_id} = get_first_sample_from_series($annotation{series});
+
+		next unless ($annotation{sample_id});
+
+		$annotation{run_id} = get_run_from_sample($annotation{sample_id});
+
+		next unless ($annotation{run_id});
+
+		$annotation{run_srr} = get_srr_from_srx($annotation{run_id});
+
+		next unless ($annotation{run_srr});
+
+		warn "ID: $id Series: $annotation{series} Sample: $annotation{sample_id} Run: $annotation{run_id} SRR: $annotation{run_srr} Title: $title\n";
+
+
+
+}
+
+sub get_first_sample_from_series {
+		my ($gse) = @_;
+
+		my $command = "wget -qO- http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=$gse\\&targ=self\\&form=text\\&view=quick";
+
+
+		my $response = `$command`;
+
+		if ($response =~ /Series_sample_id = (GSM\d+)/) {
+				return $1;
+		}
+
+	 
+		warn "No GSM number from $gse\n";
+
+}
+
+sub get_run_from_sample {
+		my ($gsm) = @_;
+
+		my $command = "wget -qO- http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=$gsm\&targ=self\&form=text\&view=quick";
+
+		my $response = `$command`;
+
+		if ($response =~ /SRX\d+\/(SRX\d+)/) {
+				return $1;
+		}
+
+		warn "No SRX number from $gsm\n";
+
+}
+
+sub get_srr_from_srx {
+
+		my ($srx) = @_;
+
+		my $command = "wget -qO- http://www.ebi.ac.uk/ena/data/view/$srx\&display=xml";
+
+		my $response = `$command`;
+
+		if ($response =~ /<ID>(SRR\d+)<\/ID>/) {
+				return $1;
+		}
+
+	 
+		warn "No SRR number from $srx\n";
+
+}
+
+
+
+
+
+
