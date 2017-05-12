@@ -20,7 +20,6 @@ open (IN,$gds_file) or die "Can't read $gds_file: $!";
 while (<IN>) {
 		chomp;
 		next unless ($_);
-		sleep(1);
 		my ($id,$title) = split(/\. /,$_,2);
 
 		my %annotation;
@@ -39,6 +38,10 @@ while (<IN>) {
 				}
 		}
 
+		next if ($id < 101);
+
+		sleep(1);
+
 		$annotation{sample_id} = get_first_sample_from_series($annotation{series});
 
 		next unless ($annotation{sample_id});
@@ -47,11 +50,14 @@ while (<IN>) {
 
 		next unless ($annotation{run_id});
 
-		$annotation{run_srr} = get_srr_from_srx($annotation{run_id});
+		($annotation{run_srr},$annotation{url}) = get_url_from_srx($annotation{run_id});
 
-		next unless ($annotation{run_srr});
+		next unless ($annotation{run_srr} and $annotation{url});
 
-		warn "ID: $id Series: $annotation{series} Sample: $annotation{sample_id} Run: $annotation{run_id} SRR: $annotation{run_srr} Title: $title\n";
+		
+		warn "ID: $id Series: $annotation{series} Sample: $annotation{sample_id} Run: $annotation{run_id} SRR: $annotation{run_srr} URL: $annotation{url} Title: $title\n";
+
+		
 
 
 
@@ -77,7 +83,7 @@ sub get_first_sample_from_series {
 sub get_run_from_sample {
 		my ($gsm) = @_;
 
-		my $command = "wget -qO- http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=$gsm\&targ=self\&form=text\&view=quick";
+		my $command = "wget -qO- http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=$gsm\\&targ=self\\&form=text\\&view=quick";
 
 		my $response = `$command`;
 
@@ -93,7 +99,7 @@ sub get_srr_from_srx {
 
 		my ($srx) = @_;
 
-		my $command = "wget -qO- http://www.ebi.ac.uk/ena/data/view/$srx\&display=xml";
+		my $command = "wget -qO- http://www.ebi.ac.uk/ena/data/view/$srx\\&display=xml";
 
 		my $response = `$command`;
 
@@ -106,6 +112,29 @@ sub get_srr_from_srx {
 
 }
 
+
+sub get_url_from_srx {
+
+		my ($srx) = @_;
+
+		my $command = "wget -qO- http://www.ebi.ac.uk/ena/data/warehouse/filereport?accession=$srx\\&result=read_run\\&fields=fastq_ftp\\&download=txt";
+
+		my $response = `$command`;
+
+		if ($response =~ /(ftp.sra\S+?fastq.gz)/) {
+				my $url = $1;
+
+				if ($url =~ /(SRR\d+)_?\d?\.fastq.gz/) {
+						return($1,$url);
+				}
+				warn "No SRR from $srx\n";
+		}
+
+		warn "No URL from $srx\n";
+	 
+
+
+}
 
 
 
