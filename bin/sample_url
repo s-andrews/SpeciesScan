@@ -1,0 +1,19 @@
+#!/usr/bin/perl
+use warnings;
+use strict;
+
+# This script takes in a URL for a fastq (or fastq.gz) file
+# along with a target number of reads and an average quality
+# cutoff.  It will then find the first reads which match the 
+# required parameters from that file and return them without
+# having to read the whole file.
+
+# These are the configuration options
+
+my $average_phred_score = 25;
+my $n_content = 0;
+my $trimmed_length = 50;
+my $target_read_count = 100000;
+
+
+my ($url) = @ARGV;
