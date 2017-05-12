@@ -17,3 +17,97 @@ my $target_read_count = 100000;
 
 
 my ($url) = @ARGV;
+
+# We're going to cheat and use wget to do the actual streaming
+# of the data back to this script.  Figuring out how to make
+# Net::FTP do it was too painful, and this wil be limited by
+# download bandwidth anyway so it won't affect the speed
+
+open (IN,"wget -qO- $url | zcat |") or die "Can't open URL '$url': $!";
+
+
+my $header;
+my $seq;
+my $mid;
+my $quals;
+
+my $debug = 0;
+
+my $valid_seqs = 0;
+
+while (<IN>) {
+
+		$debug and sleep(1);
+
+		$header = $_;
+		$seq = <IN>;
+		$mid = <IN>;
+		$quals = <IN>;
+
+		unless ($quals) {
+				die "Ran out of data in the middle of a read\n";
+		}
+
+		$debug and warn "Read\n$header$seq$mid$quals\n";
+
+		chomp $seq;
+		chomp $quals;
+
+		# Trim them if they're too long
+		if (length($seq) > $trimmed_length) {
+				$seq = substr($seq,0,50);
+				$quals = substr($quals,0,50);
+				$debug and warn "Trimmed read length\n$header$seq\n$mid$quals\n\n";
+		}
+
+		# Count the Ns
+		my $n_count = ($seq =~ tr/Nn//);
+
+		$debug and warn "N count = $n_count\n";
+
+		if ($n_count > $n_content) {
+				$debug and warn "N content too high - skipping\n";
+				next;
+		}
+
+		my $average_quality = get_average_quality($quals);
+
+		$debug and warn "Average quality = $average_quality\n";
+
+		if ($average_quality < $average_phred_score) {
+				$debug and warn "Quality too low - skipping\n";
+		}
+
+		
+		print $header,$seq,"\n",$mid,$quals,"\n";
+		++$valid_seqs;
+
+		if ($valid_seqs == $target_read_count) {
+				$debug and warn "Found enough sequences\n";
+				last;
+		}
+
+}
+
+
+
+sub get_average_quality {
+		my ($quals) = @_;
+
+		my @quals = split(//,$quals);
+
+		my $qual_sum = 0;
+
+		foreach my $qual (@quals) {
+				$qual_sum += ord($qual)-33;
+		}
+
+		$qual_sum /= @quals;
+
+		return($qual_sum);
+
+			 
+
+
+}
+
