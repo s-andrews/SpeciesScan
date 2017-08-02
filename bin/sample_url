@@ -60,6 +60,12 @@ while (<IN>) {
 				$debug and warn "Trimmed read length\n$header$seq\n$mid$quals\n\n";
 		}
 
+		# Check if this might be colorspace data
+		if ($seq =~ /\d/) {
+				die "Found numbers in reads - this is probably colorspace\n";
+		}
+
+
 		# Count the Ns
 		my $n_count = ($seq =~ tr/Nn//);
 

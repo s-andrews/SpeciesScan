@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 use warnings;
 use strict;
+use FindBin qw($RealBin);
 
 # This script takes in a GDS search result and for each entry it
 # will:
@@ -11,11 +12,19 @@ use strict;
 # 4) Query ENA for this number to get the SRR identifier
 # 5) Construct the download URL for the first read set for this identifer
 
-
 my ($gds_file) = @ARGV;
 
 
 open (IN,$gds_file) or die "Can't read $gds_file: $!";
+
+my $outdir = $gds_file;
+$outdir =~ s/^.*\///;
+
+$outdir = "$RealBin/../results/$outdir";
+
+system("mkdir -p \"$outdir\"") == 0 or die "Failed to make results folder";
+
+open (OUT,'>',"$outdir/screen_log.txt") or die "Can't write log file: $!";
 
 while (<IN>) {
 		chomp;
@@ -38,9 +47,7 @@ while (<IN>) {
 				}
 		}
 
-		next if ($id < 101);
-
-		sleep(1);
+		#next if ($id < 101);
 
 		$annotation{sample_id} = get_first_sample_from_series($annotation{series});
 
@@ -50,15 +57,35 @@ while (<IN>) {
 
 		next unless ($annotation{run_id});
 
-		($annotation{run_srr},$annotation{url}) = get_url_from_srx($annotation{run_id});
+		($annotation{url},$annotation{run_srr},$annotation{species}) = get_url_from_srx($annotation{run_id});
 
-		next unless ($annotation{run_srr} and $annotation{url});
+		next unless ($annotation{url} and $annotation{run_srr} and $annotation{species});
+
+		unless ($annotation{species} eq 'Mus musculus') {
+				warn "Skipping non-mouse ($annotation{species})\n";
+				next;
+		}
+
+	  print OUT join("\t",($id,
+												 $annotation{series},
+												 $annotation{species},
+												 $annotation{sample_id},
+												 $annotation{run_id},
+												 $annotation{run_srr},
+												 $annotation{url},
+												 $title)),"\n";
 
 		
-		warn "ID: $id Series: $annotation{series} Sample: $annotation{sample_id} Run: $annotation{run_id} SRR: $annotation{run_srr} URL: $annotation{url} Title: $title\n";
+		# Get the sequence from the fastq file and save it into the results folder
+		#
+		# We don't die on failure because things like colorspace data can mess us up
+		system("$RealBin/sample_url http://$annotation{url} | gzip -4 > $outdir/${id}_$annotation{run_srr}.fastq.gz") == 0 or do {
+				warn "Couldn't write results file for $id";
+				next;
+		};
 
-		
-
+		# Run fastq screen on the sequence
+		system("fastq_screen --quiet --subset 0 --outdir $outdir $outdir/${id}_$annotation{run_srr}.fastq.gz") == 0 or die "Failed to run fastq_screen on id $id\n";
 
 
 }
@@ -117,15 +144,33 @@ sub get_url_from_srx {
 
 		my ($srx) = @_;
 
-		my $command = "wget -qO- http://www.ebi.ac.uk/ena/data/warehouse/filereport?accession=$srx\\&result=read_run\\&fields=fastq_ftp\\&download=txt";
+		my $command = "wget -qO- http://www.ebi.ac.uk/ena/data/warehouse/filereport?accession=$srx\\&result=read_run\\&fields=fastq_ftp,scientific_name\\&download=txt";
 
 		my $response = `$command`;
 
+		my $url;
+		my $srr;
 		if ($response =~ /(ftp.sra\S+?fastq.gz)/) {
-				my $url = $1;
+				$url = $1;
+
+				#warn "URL is $url\n";
 
 				if ($url =~ /(SRR\d+)_?\d?\.fastq.gz/) {
-						return($1,$url);
+					 $srr = $1;
+
+					 #warn "SRR = $1\n";
+
+					 if ($response =~ /fastq\.gz\t([\w\s]+)/) {
+							 #warn "Species is $1\n";
+
+							 my $species = $1;
+							 chomp($species);
+							 return($url,$srr,$species);
+					 }
+					 else {
+							 warn "No species from $srx\n";
+					 }
+
 				}
 				warn "No SRR from $srx\n";
 		}
