@@ -1,0 +1,99 @@
+#!/usr/bin/perl
+use warnings;
+use strict;
+
+# This program takes in a folder of processed screen results
+# and linearises it into a single line per sample so that
+# we can run it though PCA or similar analysis.
+#
+# The input is a folder containing screen data and the output
+# is a tab delimited file written to STDOUT.
+
+my ($dir) = @ARGV;
+
+my @screen_files = <$dir/*_screen.txt>;
+
+print_headers($screen_files[0]);
+
+foreach my $file (@screen_files) {
+		process_file($file);
+}
+
+sub print_headers {
+
+		my ($file) = @_;
+
+		open (IN,$file) or die "Can't read $file: $!";
+
+		my @labels = ("unmapped","one_hit_one_genome","multiple_hits_one_genome","one_hit_multiple_genomes","multiple_hits_multiple_genomes");
+
+		my @header;
+
+		# Skip the first two lines
+		$_ = <IN>;
+		$_ = <IN>;
+
+		while (<IN>) {
+				chomp;
+				last unless ($_);
+				my ($species) = split(/\t/);
+
+				foreach my $label (@labels) {
+						push @header,$species."_$label";
+				}
+		}
+
+		push @header, "no_hits_any_species";
+
+		print join("\t",@header),"\n";
+
+
+}
+
+
+sub process_file {
+		my ($file) = @_;
+
+		open (IN,$file) or die "Can't read $file: $!";
+
+		# Skip the first two lines
+		$_ = <IN>;
+		$_ = <IN>;
+		
+		my $sample = $file;
+		$sample =~ s/.*\///;
+		$sample =~ s/_screen.txt$//;
+
+		my @data = ($sample);
+
+		while (<IN>) {
+				chomp;
+
+				if (/^\%Hit_no_genomes: ([\d\.]+)/) {
+						push @data, $1;
+						next;
+				}
+
+				my @sections = split(/\t/);
+
+				# We just want the percentage values which are 
+				# the odd values starting from 3
+
+				my $index = 3;
+				while ($index <= $#sections) {
+						push @data,$sections[$index];
+						$index +=2;
+				}
+		}
+
+
+		print join("\t",@data),"\n";
+
+
+
+}
+
+
+
+
+
